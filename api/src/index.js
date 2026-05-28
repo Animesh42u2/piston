@@ -22,12 +22,9 @@ expressWs(app);
 
     Object.values(globals.data_directories).for_each(dir => {
         let data_path = path.join(config.data_directory, dir);
-
         logger.debug(`Ensuring ${data_path} exists`);
-
         if (!fss.exists_sync(data_path)) {
             logger.info(`${data_path} does not exist.. Creating..`);
-
             try {
                 fss.mkdir_sync(data_path);
             } catch (e) {
@@ -41,9 +38,7 @@ expressWs(app);
         config.data_directory,
         globals.data_directories.packages
     );
-
     const pkglist = await fs.readdir(pkgdir);
-
     const languages = await Promise.all(
         pkglist.map(lang => {
             return fs.readdir(path.join(pkgdir, lang)).then(x => {
@@ -51,13 +46,11 @@ expressWs(app);
             });
         })
     );
-
     const installed_languages = languages
         .flat()
         .filter(pkg =>
             fss.exists_sync(path.join(pkg, globals.pkg_installed_file))
         );
-
     installed_languages.for_each(pkg => runtime.load_package(pkg));
 
     logger.info('Starting API Server');
@@ -66,7 +59,6 @@ expressWs(app);
 
     app.use(body_parser.urlencoded({ extended: true }));
     app.use(body_parser.json());
-
     app.use((err, req, res, next) => {
         return res.status(400).send({
             stack: err.stack,
@@ -74,12 +66,10 @@ expressWs(app);
     });
 
     logger.debug('Registering Routes');
-
     const api_v2 = require('./api/v2');
     app.use('/api/v2', api_v2);
 
     const { version } = require('../package.json');
-
     app.get('/', (req, res, next) => {
         return res.status(200).send({ message: `Piston v${version}` });
     });
@@ -90,13 +80,42 @@ expressWs(app);
 
     logger.debug('Calling app.listen');
     const [address, port] = config.bind_address.split(':');
-
     const server = app.listen(port, address, () => {
         logger.info('API server started on', config.bind_address);
     });
 
     process.on('SIGTERM', () => {
         server.close();
-        process.exit(0)
+        process.exit(0);
     });
 })();
+
+// ── Auto-install runtimes on every startup ────────────────────
+async function installRuntimes() {
+    const packages = [
+        { language: 'python',     version: '3.10.0'  },
+        { language: 'javascript', version: '18.15.0' },
+        { language: 'java',       version: '15.0.2'  },
+        { language: 'c++',        version: '10.2.0'  },
+    ];
+
+    console.log('[auto-install] Starting runtime installation...');
+
+    for (const pkg of packages) {
+        try {
+            const res = await fetch('http://localhost:2000/api/v2/packages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(pkg),
+            });
+            const data = await res.json();
+            console.log(`[auto-install] ✓ ${pkg.language} ${pkg.version}`, data.language ?? '');
+        } catch (e) {
+            console.error(`[auto-install] ✗ ${pkg.language}:`, e.message);
+        }
+    }
+
+    console.log('[auto-install] Done!');
+}
+
+setTimeout(installRuntimes, 8000);
